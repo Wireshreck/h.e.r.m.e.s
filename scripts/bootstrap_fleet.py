@@ -195,7 +195,10 @@ def main() -> int:
 
     fleet = yaml.safe_load(FLEET.read_text(encoding="utf-8"))
     home = hermes_home()
-    root_env = read_env(home / ".env")
+    # Copy ONLY the free-provider keys (fleet.env_keys) into profile .env files;
+    # everything else (debug flags, session timeouts, third-party tokens) stays root-scoped.
+    wanted_keys = list((fleet.get("env_keys") or {}).values()) or DEFAULT_ENV_KEYS
+    root_env = {k: v for k, v in (read_env(home / ".env")).items() if k in wanted_keys}
 
     if args.verify_only:
         verify(fleet, home)
