@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Git worktrees created by kanban cards
+.worktrees/
+
+# Local state / build artifacts
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+Thumbs.db
+
+# Secrets never belong in this repo
+.env
+*.env

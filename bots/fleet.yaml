@@ -1,0 +1,188 @@
+# H.E.R.M.E.S fleet roster — the source of truth for the bot fleet.
+#
+# Every entry is one Hermes Agent profile ("bot"). The profile description is
+# what the kanban decomposer reads when it routes a task to a specialist, so
+# keep it role-focused. Models are FREE tiers only:
+#   - openrouter  : OpenRouter models tagged ":free" (OpenRouter free tier)
+#   - gemini      : Google AI Studio free tier (GOOGLE_API_KEY)
+#   - ollama-launch: local Ollama fallback (no quota, no cost)
+#
+# Apply / repair the whole fleet with:  python scripts/bootstrap_fleet.py
+#                                      python scripts/bootstrap_fleet.py --with-board
+
+orchestrator: hermes-orchestrator
+
+env_keys:
+  openrouter: OPENROUTER_API_KEY
+  gemini: GOOGLE_API_KEY
+
+bots:
+  - name: hermes-orchestrator
+    display: "HERMES - Main Orchestrator"
+    role: Orchestrator
+    description: >-
+      HERMES main orchestrator. Decomposes a goal into kanban cards, fans them
+      out to specialist bots, links dependencies, tracks progress, and judges
+      completion. Orchestrates only; it does not implement tasks itself.
+    provider: openrouter
+    model: nvidia/nemotron-3-ultra-550b-a55b:free
+    fallback:
+      - { provider: gemini, model: gemini-3.8-flash }
+
+  - name: researcher
+    display: "Researcher - Research & fact-checking"
+    role: Research & fact-checking
+    description: >-
+      Research and fact-checking specialist. Gathers web sources, verifies
+      claims, cross-checks facts, and returns cited findings and research
+      briefs.
+    provider: gemini
+    model: gemini-3.8-flash
+    fallback:
+      - { provider: openrouter, model: thinkingmachines/inkling-small:free }
+
+  - name: analyst
+    display: "Analyst - Data analysis & statistics"
+    role: Data analysis & statistics
+    description: >-
+      Data analysis and statistics specialist. Computes metrics, trends, and
+      tables; turns raw data, logs, and CSV files into quantitative findings.
+    provider: gemini
+    model: gemini-3.1-pro-preview
+    fallback:
+      - { provider: gemini, model: gemini-3.8-flash }
+
+  - name: security
+    display: "Security - Cybersecurity & auditing"
+    role: Cybersecurity & auditing
+    description: >-
+      Cybersecurity and auditing specialist. Threat modeling, vulnerability
+      analysis, secure design review, audit checklists, and defensive
+      remediation guidance.
+    provider: openrouter
+    model: nvidia/nemotron-3-ultra-550b-a55b:free
+    fallback:
+      - { provider: gemini, model: gemini-3.8-flash }
+
+  - name: architect
+    display: "Architect - System design & planning"
+    role: System design & planning
+    description: >-
+      System design and planning specialist. Produces architecture designs,
+      module boundaries, API contracts, data models, and step-by-step
+      implementation plans.
+    provider: openrouter
+    model: thinkingmachines/inkling:free
+    fallback:
+      - { provider: gemini, model: gemini-3.5-flash }
+      - { provider: ollama-launch, model: qwen3:8b-lowmem }
+
+  - name: developer
+    display: "Developer - Coding & bug fixing"
+    role: Coding & bug fixing
+    description: >-
+      Coding and bug-fixing specialist. Implements features, writes and
+      refactors code, fixes bugs, and runs quick checks to keep the build
+      clean.
+    provider: openrouter
+    model: poolside/laguna-s-2.1:free
+    fallback:
+      - { provider: gemini, model: gemini-3.8-flash }
+      - { provider: ollama-launch, model: qwen3:4b-32k }
+
+  - name: tester
+    display: "Tester - Testing & QA"
+    role: Testing & QA
+    description: >-
+      Testing and QA specialist. Writes and runs tests, reproduces bugs,
+      verifies acceptance criteria, and reports failures with exact
+      reproduction steps.
+    provider: openrouter
+    model: poolside/laguna-xs-2.1:free
+    fallback:
+      - { provider: gemini, model: gemini-3.8-flash }
+      - { provider: ollama-launch, model: qwen3:4b-32k }
+
+  - name: reviewer
+    display: "Reviewer - Code review"
+    role: Code review
+    description: >-
+      Code review specialist. Reviews diffs and PRs for correctness,
+      regressions, style, and maintainability, and returns concrete
+      actionable findings.
+    provider: openrouter
+    model: poolside/laguna-s-2.1:free
+    fallback:
+      - { provider: gemini, model: gemini-3.8-flash }
+
+  - name: devops
+    display: "DevOps - Deployment & infrastructure"
+    role: Deployment & infrastructure
+    description: >-
+      Deployment and infrastructure specialist. CI/CD pipelines (GitHub
+      Actions), build and release automation, environment setup, monitoring,
+      and operational runbooks.
+    provider: gemini
+    model: gemini-3.5-flash
+    fallback:
+      - { provider: openrouter, model: poolside/laguna-xs-2.1:free }
+      - { provider: ollama-launch, model: qwen3:4b-32k }
+
+  - name: reverse-engineer
+    display: "Reverse Engineer - Binary analysis & debugging"
+    role: Binary analysis & debugging
+    description: >-
+      Binary analysis and debugging specialist. Disassembly, protocol and
+      file-format reconstruction, deobfuscation, and low-level debugging via
+      REA tooling.
+    provider: openrouter
+    model: thinkingmachines/inkling:free
+    fallback:
+      - { provider: gemini, model: gemini-3.8-flash }
+      - { provider: ollama-launch, model: qwen3:8b-lowmem }
+
+  - name: writer
+    display: "Writer - Documentation"
+    role: Documentation
+    description: >-
+      Documentation specialist. Writes READMEs, guides, API docs, changelogs,
+      and clear technical copy from engineering output.
+    provider: gemini
+    model: gemini-3.8-flash
+    fallback:
+      - { provider: gemini, model: gemini-3.5-flash }
+      - { provider: openrouter, model: thinkingmachines/inkling-small:free }
+
+  - name: designer
+    display: "Designer - UI/UX & frontend design"
+    role: UI/UX & frontend design
+    description: >-
+      UI/UX and frontend design specialist. Design systems, layouts, color
+      and typography, mockups, and visual QA of screens.
+    provider: gemini
+    model: gemini-3.7-flash
+    fallback:
+      - { provider: gemini, model: gemini-3.8-flash }
+
+  - name: automater
+    display: "Automater - Scripts & integrations"
+    role: Scripts & integrations
+    description: >-
+      Scripting and integration specialist. Automation scripts, API and
+      webhook integrations, cron jobs, and glue code that makes workflows run
+      hands-off.
+    provider: openrouter
+    model: poolside/laguna-xs-2.1:free
+    fallback:
+      - { provider: gemini, model: gemini-3.8-flash }
+      - { provider: ollama-launch, model: qwen3:4b-32k }
+
+board:
+  # Board connected to this repository (set by --with-board).
+  slug: default
+  default_workdir: .          # resolved to this repo's absolute path at apply time
+  orchestrator_profile: hermes-orchestrator
+  auto_decompose: true
+  decomposer:
+    provider: openrouter
+    model: thinkingmachines/inkling-small:free
