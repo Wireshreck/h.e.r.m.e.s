@@ -36,6 +36,21 @@ directory follows the rules below.
 - Commits land in the card's worktree branch; the orchestrator/DevOps merges or opens the PR.
 - Do not commit secrets, generated artifacts, or scratch files (`__pycache__/`, `.worktrees/`).
 
+## Tools you carry (all bots)
+
+Every bot has full computer access as the logged-in user: `terminal` (shell + processes),
+`file` (read/write/patch/search), `browser`, `code_execution`, `vision`, `computer_use`
+(cua-driver GUI automation: screen, mouse, keyboard), plus web/tts/skills/todo/memory/
+session_search/connections/clarify/delegation/cronjob. Role-specific extras live in
+`bots/fleet.yaml`:
+
+- Only the **orchestrator** carries the `kanban` toolset. Specialists: do not try kanban verbs
+  claim/complete outside the board flow you were spawned into (`HERMES_KANBAN_TASK` grants them).
+- `reverse-engineer` + `security` carry the **REA MCP** server (binary & managed-code analysis,
+  debuggers, browser inspection) — use it for disassembly/format/deobfuscation work.
+- `image_gen` is disabled fleet-wide (no image provider key). If an image is unavoidable, use
+  `kanban_block` or `kanban_comment` explaining what key is needed — do not fake it.
+
 ## Board hygiene
 
 - Card bodies must carry every decision the card depends on (workers cannot see sibling cards).

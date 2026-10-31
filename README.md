@@ -58,6 +58,40 @@ Every primary model is a genuinely free tier:
 Each bot also carries a **fallback chain** (`fallback_providers` in its profile config), tried
 automatically when the primary hits rate-limit/overload/connection errors.
 
+## Tools: full computer access, per-role extras
+
+Every bot runs with a **common base of 16 toolsets** — full computer access as the logged-in user —
+plus role-specific extras on top. The declarative source of truth is `bots/fleet.yaml` (`tools:`).
+
+| Toolset | What the bots can do with it |
+|---------|------------------------------|
+| `terminal` | shell commands + process management, run as the normal user (`approvals.mode: off`) |
+| `file` | read / write / patch / search files anywhere on the user filesystem |
+| `browser` | browser automation: navigate, click, type, screenshots |
+| `code_execution` | sandboxed Python with tool RPC (pandas, scripts, quick maths) |
+| `vision` | analyze images & screenshots (`vision_analyze`) |
+| `computer_use` | **GUI automation via cua-driver**: screen capture, mouse, keyboard, window management |
+| `web`, `tts`, `skills`, `todo`, `memory`, `session_search`, `connections`, `clarify`, `delegation`, `cronjob` | supporting layer (search, speech, planning, recall, scheduling….) |
+
+Role-specific capability goes beyond the base:
+
+- **`kanban` toolset** → orchestrator only (`kanban_create` / `kanban_link` / `kanban_watch`). Worker
+  bots get `kanban_*` verbs automatically via `HERMES_KANBAN_TASK`, so specialists must NOT carry the
+  toolset.
+- **REA MCP server** (`mcp_servers.rea`) → `security` + `reverse-engineer` only: 229 binary-analysis
+  tools (disassembly, managed/native code, debugger sessions, browser page inspection).
+- **`image_gen` is disabled fleet-wide** — no image-provider key (`FAL_KEY` / `DEEPINFRA_API_KEY`)
+  is configured. Add a key, then `hermes -p <bot> tools enable image_gen` to switch a bot back on.
+
+Verification / doctoring:
+
+```sh
+hermes -p developer tools list          # 16 enabled incl. computer_use; image_gen disabled
+hermes -p reverse-engineer tools list   # tail shows "MCP servers: rea — all tools enabled"
+hermes computer-use status              # cua-driver binary + runtime contract
+hermes computer-use doctor              # UIAutomation + screen-capture check matrix
+```
+
 ## How the fleet works
 
 - **Routing** — every profile has a one-paragraph `description`; the kanban **decomposer** reads the
@@ -132,7 +166,7 @@ hermes kanban swarm "Design a multi-region failover plan" \
 ```
 h.e.r.m.e.s/
 ├── bots/
-│   ├── fleet.yaml          # declarative roster: 13 bots, free models, descriptions, fallbacks
+│   ├── fleet.yaml          # declarative roster: models, fallbacks, toolsets, MCP servers
 │   └── souls/              # per-bot persona (identity + output contract) → profile SOUL.md
 ├── scripts/
 │   └── bootstrap_fleet.py  # idempotent installer / verifier for the whole stack

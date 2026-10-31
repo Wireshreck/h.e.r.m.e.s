@@ -7,6 +7,12 @@
 #   - gemini      : Google AI Studio free tier (GOOGLE_API_KEY)
 #   - ollama-launch: local Ollama fallback (no quota, no cost)
 #
+# Toolsets ship a COMMON BASE (full computer access as the normal user) plus
+# per-role extras. `computer_use` is the cua-driver GUI automation backend
+# (screen, mouse, keyboard, UIAutomation) — verified healthy on Windows.
+# `image_gen` is in the default disabled list because no image provider key
+# (FAL_KEY / DEEPINFRA_API_KEY) is configured; re-enable per bot when one is.
+#
 # Apply / repair the whole fleet with:  python scripts/bootstrap_fleet.py
 #                                      python scripts/bootstrap_fleet.py --with-board
 
@@ -15,6 +21,28 @@ orchestrator: hermes-orchestrator
 env_keys:
   openrouter: OPENROUTER_API_KEY
   gemini: GOOGLE_API_KEY
+
+tools:
+  # Full local computer access, enabled on every bot (idempotent apply):
+  base:
+    - web            # web_search / web_extract
+    - browser        # browser automation (navigate, click, type, screenshots)
+    - terminal       # shell + processes (approvals.mode: off -> runs as the logged-in user)
+    - file           # read_file, write_file, patch, search on the whole user filesystem
+    - code_execution # sandboxed python with tool RPC
+    - vision         # vision_analyze for images/screenshots (OPENROUTER_API_KEY)
+    - tts            # Edge TTS (free, keyless)
+    - skills         # skills_list / skill_view
+    - todo           # in-memory task planning
+    - memory         # persistent memory across sessions
+    - session_search # recall past conversations
+    - connections    # user connections surface
+    - clarify        # clarifying questions
+    - delegation     # spawn child subagents
+    - cronjob        # scheduled tasks
+    - computer_use   # cua-driver GUI automation (ACQUIRE: screen/mouse/keyboard as normal user)
+  # Known-nonfunctional without a configured provider key; disabled to avoid tool errors:
+  disable_default: [image_gen]
 
 bots:
   - name: hermes-orchestrator
@@ -28,6 +56,10 @@ bots:
     model: nvidia/nemotron-3-ultra-550b-a55b:free
     fallback:
       - { provider: gemini, model: gemini-3.8-flash }
+    tools:
+      enable: [kanban]   # drives the board: kanban_create / kanban_link / kanban_list
+      disable: []
+    mcp_servers: {}
 
   - name: researcher
     display: "Researcher - Research & fact-checking"
@@ -40,6 +72,10 @@ bots:
     model: gemini-3.8-flash
     fallback:
       - { provider: openrouter, model: thinkingmachines/inkling-small:free }
+    tools:
+      enable: []         # web, browser, vision come with the base
+      disable: []
+    mcp_servers: {}
 
   - name: analyst
     display: "Analyst - Data analysis & statistics"
@@ -51,6 +87,10 @@ bots:
     model: gemini-3.1-pro-preview
     fallback:
       - { provider: gemini, model: gemini-3.8-flash }
+    tools:
+      enable: []         # code_execution covers pandas / statistics scripts
+      disable: []
+    mcp_servers: {}
 
   - name: security
     display: "Security - Cybersecurity & auditing"
@@ -63,6 +103,14 @@ bots:
     model: nvidia/nemotron-3-ultra-550b-a55b:free
     fallback:
       - { provider: gemini, model: gemini-3.8-flash }
+    tools:
+      enable: []         # terminal runs nmap-style reconnaissance locally
+      disable: []
+    mcp_servers:
+      rea:
+        command: C:/Program Files/nodejs/node.exe
+        args: ["C:/Users/User/AppData/Roaming/npm/node_modules/rea-agents/scripts/rea.mjs", "mcp"]
+        enabled: true    # REA: managed/native code analysis, runtime inspection, browser pages
 
   - name: architect
     display: "Architect - System design & planning"
@@ -76,6 +124,10 @@ bots:
     fallback:
       - { provider: gemini, model: gemini-3.5-flash }
       - { provider: ollama-launch, model: qwen3:8b-lowmem }
+    tools:
+      enable: []
+      disable: []
+    mcp_servers: {}
 
   - name: developer
     display: "Developer - Coding & bug fixing"
@@ -89,6 +141,10 @@ bots:
     fallback:
       - { provider: gemini, model: gemini-3.8-flash }
       - { provider: ollama-launch, model: qwen3:4b-32k }
+    tools:
+      enable: []         # terminal + file + code_execution = build/test loop
+      disable: []
+    mcp_servers: {}
 
   - name: tester
     display: "Tester - Testing & QA"
@@ -102,6 +158,10 @@ bots:
     fallback:
       - { provider: gemini, model: gemini-3.8-flash }
       - { provider: ollama-launch, model: qwen3:4b-32k }
+    tools:
+      enable: []         # terminal + code_execution drive the test suites
+      disable: []
+    mcp_servers: {}
 
   - name: reviewer
     display: "Reviewer - Code review"
@@ -114,6 +174,10 @@ bots:
     model: poolside/laguna-s-2.1:free
     fallback:
       - { provider: gemini, model: gemini-3.8-flash }
+    tools:
+      enable: []         # file + terminal (read/diff) + web for comparisons
+      disable: []
+    mcp_servers: {}
 
   - name: devops
     display: "DevOps - Deployment & infrastructure"
@@ -127,6 +191,10 @@ bots:
     fallback:
       - { provider: openrouter, model: poolside/laguna-xs-2.1:free }
       - { provider: ollama-launch, model: qwen3:4b-32k }
+    tools:
+      enable: []         # cronjob + terminal + gh/git for pipelines and releases
+      disable: []
+    mcp_servers: {}
 
   - name: reverse-engineer
     display: "Reverse Engineer - Binary analysis & debugging"
@@ -140,6 +208,14 @@ bots:
     fallback:
       - { provider: gemini, model: gemini-3.8-flash }
       - { provider: ollama-launch, model: qwen3:8b-lowmem }
+    tools:
+      enable: []         # terminal + file + vision for hex dumps, tracers, screenshots
+      disable: []
+    mcp_servers:
+      rea:
+        command: C:/Program Files/nodejs/node.exe
+        args: ["C:/Users/User/AppData/Roaming/npm/node_modules/rea-agents/scripts/rea.mjs", "mcp"]
+        enabled: true    # REA: binary analysis, binary debugging RE tool suite (229 tools)
 
   - name: writer
     display: "Writer - Documentation"
@@ -152,6 +228,10 @@ bots:
     fallback:
       - { provider: gemini, model: gemini-3.5-flash }
       - { provider: openrouter, model: thinkingmachines/inkling-small:free }
+    tools:
+      enable: []         # web + browser verify rendered docs / translations
+      disable: []
+    mcp_servers: {}
 
   - name: designer
     display: "Designer - UI/UX & frontend design"
@@ -163,6 +243,10 @@ bots:
     model: gemini-3.7-flash
     fallback:
       - { provider: gemini, model: gemini-3.8-flash }
+    tools:
+      enable: []         # browser screenshots + vision + computer_use drive visual QA
+      disable: []
+    mcp_servers: {}
 
   - name: automater
     display: "Automater - Scripts & integrations"
@@ -176,6 +260,10 @@ bots:
     fallback:
       - { provider: gemini, model: gemini-3.8-flash }
       - { provider: ollama-launch, model: qwen3:4b-32k }
+    tools:
+      enable: []         # cronjob + terminal + computer_use = full workflow automation
+      disable: []
+    mcp_servers: {}
 
 board:
   # Board connected to this repository (set by --with-board).

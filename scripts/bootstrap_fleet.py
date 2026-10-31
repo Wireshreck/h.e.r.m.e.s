@@ -16,6 +16,7 @@ Requires: `hermes` on PATH with OPENROUTER_API_KEY and GOOGLE_API_KEY configured
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -108,7 +109,39 @@ def yaml_literal(entries: list[dict[str, str]]) -> str:
     return f"[{parts}]"
 
 
-def apply_bot(bot: dict, home: Path, root_env: dict[str, str], dry: bool = False) -> list[str]:
+def apply_tools(fleet_tools: dict, bot: dict) -> list[str]:
+    """Write each bot's final CLI toolset list in ONE config call.
+
+    Final list = (common base | bot extras) - (default disabled | bot disabled).
+    This yields the same state as repeated `hermes tools enable/disable` calls,
+    but without ~17 CLI spawns per bot."""
+    base = set(fleet_tools.get("base") or [])
+    extras = set(bot.get("tools", {}).get("enable") or [])
+    removed = set(fleet_tools.get("disable_default") or []) | set(bot.get("tools", {}).get("disable") or [])
+    final = sorted((base | extras) - removed)
+    run_hermes(["-p", bot["name"], "config", "set", "platform_toolsets.cli",
+                json.dumps(final)])
+    return [f"  tools: {len(final)} enabled ('{bot['name']}')"]
+
+
+def apply_mcp(bot: dict, dry: bool = False) -> list[str]:
+    """Apply MCP servers declared on a bot (paths normalized to forward slashes)."""
+    if dry:
+        return []
+    actions = []
+    for server, cfg in (bot.get("mcp_servers") or {}).items():
+        run_hermes(["-p", bot["name"], "config", "set", f"mcp_servers.{server}.command",
+                    str(cfg["command"]).replace("\\", "/")])
+        run_hermes(["-p", bot["name"], "config", "set", f"mcp_servers.{server}.args",
+                    json.dumps([str(a).replace("\\", "/") for a in cfg.get("args", [])])])
+        run_hermes(["-p", bot["name"], "config", "set", f"mcp_servers.{server}.enabled",
+                    "true" if cfg.get("enabled", True) else "false"])
+        actions.append(f"  mcp: {server}")
+    return actions
+
+
+def apply_bot(bot: dict, home: Path, root_env: dict[str, str],
+              fleet_tools: dict, dry: bool = False) -> list[str]:
     """Create/repair one bot profile. Returns a list of human-readable actions."""
     name, actions = bot["name"], []
     if not profile_exists(name):
@@ -119,7 +152,6 @@ def apply_bot(bot: dict, home: Path, root_env: dict[str, str], dry: bool = False
         actions.append(f"exists     {name}")
     if dry:
         return actions
-
     # Description (authoritative; the kanban decomposer routes by it)
     run_hermes(["profile", "describe", name, "--text", bot["description"].strip()])
 
@@ -152,6 +184,10 @@ def apply_bot(bot: dict, home: Path, root_env: dict[str, str], dry: bool = False
     if soul.exists():
         (home / "profiles" / name / "SOUL.md").write_text(soul.read_text(encoding="utf-8"), encoding="utf-8")
         actions.append(f"  soul: {soul.name}")
+
+    # Toolsets + MCP servers: one config call each (fast, deterministic)
+    actions += apply_tools(fleet_tools, bot)
+    actions += apply_mcp(bot)
     return actions
 
 
@@ -208,8 +244,10 @@ def main() -> int:
     print(f"Fleet:       {len(fleet['bots'])} bots from {FLEET}")
     print()
 
+    tools_cfg = fleet.get("tools") or {}
+
     for bot in fleet["bots"]:
-        for line in apply_bot(bot, home, root_env):
+        for line in apply_bot(bot, home, root_env, tools_cfg):
             print(line)
         print()
 
