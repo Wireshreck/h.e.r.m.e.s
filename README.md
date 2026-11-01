@@ -165,6 +165,9 @@ hermes kanban swarm "Design a multi-region failover plan" \
 
 ```
 h.e.r.m.e.s/
+├── powertoys/
+│   └── cmdpal-hermes/       # Windows Command Palette extension: type a task → H.E.R.M.E.S triage
+│       └── HermesCmdPalExtension/   # C# MSIX COM server (.NET 10 + cmdpal SDK 0.11)
 ├── bots/
 │   ├── fleet.yaml          # declarative roster: models, fallbacks, toolsets, MCP servers
 │   └── souls/              # per-bot persona (identity + output contract) → profile SOUL.md
@@ -182,6 +185,34 @@ python scripts/bootstrap_fleet.py --verify-only   # roster state
 hermes kanban stats                               # board health
 hermes kanban diagnostics                         # dispatcher diagnostics
 ```
+
+## Command Palette integration (Windows)
+
+A **PowerToys Command Palette extension** puts the fleet one keystroke away. Source lives in
+`powertoys/cmdpal-hermes/` (C# MSIX COM server on the `Microsoft.CommandPalette.Extensions` SDK).
+
+With the gateway running (`hermes gateway start`):
+
+1. Press `Win+Alt+Space` (Command Palette hotkey).
+2. Type your task as plain text — e.g. `hermes fix the flaky upload test` (or just any text).
+3. The fallback item **"Give task to HERMES: \<your text\>"** appears — press Enter.
+   The card is queued in **triage**; the dispatcher's decomposer fans it out and the right
+   specialist bots pick it up automatically. A toast confirms the queued card id.
+4. Typing `hermes` and pressing Open lands on the task page: open the **kanban dashboard**
+   (localhost:9119), read **board status**, open the **workspace folder**, or the GitHub repo.
+
+Rebuild + re-register after editing the extension (Developer Mode required, no signing):
+
+```sh
+& 'C:\Program Files\dotnet\dotnet.exe' build `
+    powertoys/cmdpal-hermes/HermesCmdPalExtension/HermesCmdPalExtension.csproj `
+    -c Debug -p:Platform=x64
+Add-AppxPackage -Register .\powertoys\cmdpal-hermes\HermesCmdPalExtension\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\AppxManifest.xml
+```
+
+Then restart the palette (or run `Reload` inside it) to pick up the new build.
+Uninstall: `Remove-AppxPackage HermesCmdPalExtension_0.1.0.0_x64__...` (see
+`Get-AppxPackage -Name '*Hermes*'`).
 
 ## License
 

@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "HermesCmdPalExtension (Package)": {
+      "commandName": "MsixPackage",
+      "doNotLaunchApp": true
+    },
+    "HermesCmdPalExtension (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

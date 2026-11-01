@@ -1,0 +1,11 @@
+# Build outputs
+bin/
+obj/
+Artifacts/
+AppPackages/
+
+# VS / Rider
+.vs/
+.idea/
+*.user
+*.suo
