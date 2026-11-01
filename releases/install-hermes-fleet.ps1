@@ -49,10 +49,28 @@ param(
 $ErrorActionPreference = 'Stop'
 [console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+# Diagnostics: keep a transcript of this run for post-mortems (fresh-machine failures
+# can be debugged from this file without reproducing the run).
+New-Item -ItemType Directory -Force -Path "$env:LOCALAPPDATA\hermes" | Out-Null
+try { Start-Transcript -Path "$env:LOCALAPPDATA\hermes\setup.log" -Append -ErrorAction SilentlyContinue | Out-Null } catch { }
+
 function Banner($m)  { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 function Step($m)    { Write-Host "  - $m" }
 function Good($m)    { Write-Host "  + $m" -ForegroundColor Green }
 function Warn($m)    { Write-Host "  ! $m" -ForegroundColor Yellow }
+
+function Native {
+    # The Windows PowerShell engine that ps2exe-hosted exes run on turns
+    # *redirected* native stderr into a terminating NativeCommandError when
+    # ErrorActionPreference is Stop - e.g. a healthy "git pull" progress line
+    # on stderr would abort the installer. Run natives with that behavior off.
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        if ($args.Count -ge 2) { & $args[0] @($args[1..($args.Count - 1)]) }
+        else { & $args[0] }
+    } finally { $ErrorActionPreference = $prev }
+}
 
 Banner 'H.E.R.M.E.S fleet installer'
 
@@ -148,7 +166,7 @@ $updated = 0
 foreach ($keyName in @('OPENROUTER_API_KEY', 'GOOGLE_API_KEY')) {
     $val = Get-EnvVal $keyName
     if (-not $val) { Warn "$keyName not set - that provider will be unavailable (install keys later or re-run)."; continue }
-    if ($envLines -notmatch ("^\s*"+$keyName+"\s*=")) {
+    if (@($envLines | Where-Object { $_ -match ("^\s*"+$keyName+"\s*=") }).Count -eq 0) {
         $envLines += "$keyName=$val"
         $updated++
     }
@@ -160,7 +178,7 @@ else { Good 'hermes .env already carries the configured keys.' }
 Banner 'Fleet repository'
 if (Test-Path "$RepoDir\.git") {
     Step "updating existing repo at $RepoDir"
-    & git -C $RepoDir pull --ff-only 2>$null | Out-Null
+    Native git -C $RepoDir pull --ff-only 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { Warn 'git pull failed (offline?)- using existing checkout.' }
 } elseif (Get-Command git -ErrorAction SilentlyContinue) {
     Step "cloning https://github.com/Wireshreck/h.e.r.m.e.s into $RepoDir"
@@ -179,7 +197,7 @@ Good "fleet repo ready: $RepoDir"
 
 # ----------------------------------------------------------------------------- 5. roster
 Banner 'Building the 13-bot roster (python scripts/bootstrap_fleet.py --with-board)'
-$pyyamlOk = & $py -c 'import yaml' 2>$null
+$pyyamlOk = Native $py -c 'import yaml' 2>$null
 if ($LASTEXITCODE -ne 0) {
     Step 'installing PyYAML for the roster script...'
     & $py -m pip install --user pyyaml --quiet
@@ -193,9 +211,9 @@ Good 'Fleet roster built (the profile ``hermes`` is reserved: orchestrator id is
 
 # ----------------------------------------------------------------------------- 6. gateway
 Banner 'Gateway (card dispatcher, ticks every 60s)'
-& hermes gateway status 2>$null
+Native hermes gateway status 2>$null
 if ($LASTEXITCODE -ne 0) { Step 'starting gateway...'; & hermes gateway start 2>$null | Out-Null }
-& hermes kanban init 2>$null | Out-Null
+Native hermes kanban init 2>$null | Out-Null
 Good 'Gateway + kanban board ready. Cards in triage get fan-out automatically.'
 
 # ----------------------------------------------------------------------------- 7. Command Palette extension
@@ -244,8 +262,8 @@ if (-not $SkipPalette) {
 
 # ----------------------------------------------------------------------------- 8. final report
 Banner 'Verify'
-& hermes profile list 2>$null | Select-Object -First 18 | ForEach-Object { Write-Host "  $_" }
-& hermes kanban stats 2>$null | Select-Object -First 8  | ForEach-Object { Write-Host "  $_" }
+Native hermes profile list 2>$null | Select-Object -First 18 | ForEach-Object { Write-Host "  $_" }
+Native hermes kanban stats 2>$null | Select-Object -First 8  | ForEach-Object { Write-Host "  $_" }
 
 Write-Host ''
 Write-Host 'HERMES is ready.' -ForegroundColor Green
@@ -253,3 +271,5 @@ Write-Host '  - Command Palette: press Win+Alt+Space, type any task, Enter on  "
 Write-Host '  - Terminal:        hermes -p hermes-orchestrator chat'
 Write-Host '  - Board:           hermes kanban watch    |    http://localhost:9119'
 Write-Host '  - Add keys later:  put OPENROUTER_API_KEY / GOOGLE_API_KEY in %LOCALAPPDATA%\hermes\.env, then run scripts/bootstrap_fleet.py again'
+
+try { Stop-Transcript -ErrorAction SilentlyContinue | Out-Null } catch { }
