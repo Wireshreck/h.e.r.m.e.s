@@ -1,0 +1,4 @@
+# Keep signing material and release binaries out of git:
+#   - the PFX is the private signer for the published .cer — never public
+#   - the msix/cer live as GitHub release assets, not in the repository
+/assets/
