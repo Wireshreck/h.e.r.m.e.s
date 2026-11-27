@@ -112,6 +112,9 @@ hermes computer-use doctor              # UIAutomation + screen-capture check ma
 - **Desktop canvas** — `desktop/` is a real Electron window over the same runtime: interactive
   node graph, orchestrator chat, edge-triggered history/comms drawers. See
   [desktop/README.md](desktop/README.md). Run with `cd desktop && npm start`.
+- **Desktop installer wizard** — `HERMES-Desktop-Setup.exe` (release v0.2.0) installs the
+  prebuilt canvas app with **Desktop / Start Menu shortcuts** and **this user / all users**
+  scopes. Source: `releases/install-hermes-desktop.ps1`.
 
 ## Quick start
 
