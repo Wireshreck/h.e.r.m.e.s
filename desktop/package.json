@@ -1,0 +1,17 @@
+{
+  "name": "hermes-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "H.E.R.M.E.S. interactive agent canvas desktop application",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0"
+  },
+  "allowScripts": {
+    "electron@38.8.6": true
+  }
+}

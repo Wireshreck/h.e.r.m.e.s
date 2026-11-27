@@ -109,6 +109,9 @@ hermes computer-use doctor              # UIAutomation + screen-capture check ma
   `get_conversation`, `get_agent_status`, `list_agents`, `delegate_task`, `pending_messages`).
   Messages are typed, persisted in SQLite/WAL, delivered as real turns in the recipient profile,
   and scoped to tasks via conversations. See [docs/AGENT-COMMUNICATION.md](docs/AGENT-COMMUNICATION.md).
+- **Desktop canvas** — `desktop/` is a real Electron window over the same runtime: interactive
+  node graph, orchestrator chat, edge-triggered history/comms drawers. See
+  [desktop/README.md](desktop/README.md). Run with `cd desktop && npm start`.
 
 ## Quick start
 
@@ -173,6 +176,11 @@ h.e.r.m.e.s/
 ├── powertoys/
 │   └── cmdpal-hermes/       # Windows Command Palette extension: type a task → H.E.R.M.E.S triage
 │       └── HermesCmdPalExtension/   # C# MSIX COM server (.NET 10 + cmdpal SDK 0.11)
+├── desktop/                 # Electron agent canvas + Python backend API (real runtime)
+│   ├── main.js              # window shell: starts/stops backend.py
+│   ├── backend.py           # HTTP API over Hermes CLI, kanban.db, comms/
+│   ├── ui/                  # canvas: nodes, edges, ASCII background, chat, drawers
+│   └── README.md
 ├── comms/                   # agent-to-agent bus: MCP server, protocol, SQLite store, tests
 │   ├── server.py            # zero-dependency MCP stdio server (10 tools)
 │   ├── tools.py             # tool implementations + safety guards

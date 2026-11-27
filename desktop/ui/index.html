@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>H.E.R.M.E.S // AGENT CANVAS</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div class="brand">H.E.R.M.E.S <span class="brand-sub">/ multi-agent control surface</span></div>
+    <div id="conn" class="conn" aria-live="polite"><span class="dot"></span><span id="connText">connecting…</span></div>
+    <nav class="toolbar" aria-label="Canvas controls">
+      <button id="fitBtn" title="Zoom to fit">FIT</button>
+      <button id="resetBtn" title="Reset node layout">RESET</button>
+      <button id="historyBtn" title="Toggle history (Alt+H)" aria-expanded="false">≡ HISTORY</button>
+      <button id="commsBtn" title="Toggle communications (Alt+C)" aria-expanded="false">COMMS ≡</button>
+    </nav>
+  </header>
+
+  <main id="stage" aria-label="Agent canvas">
+    <canvas id="ascii" aria-hidden="true"></canvas>
+    <div id="viewport">
+      <svg id="edges" aria-hidden="true"></svg>
+      <div id="nodes"></div>
+    </div>
+
+    <div id="tooltip" role="tooltip" hidden></div>
+
+    <section id="inspector" hidden aria-label="Agent inspector">
+      <div class="inspector-head"><span id="inspName">—</span><button id="inspClose" aria-label="Close inspector">×</button></div>
+      <div id="inspBody"></div>
+      <div class="inspector-actions">
+        <button id="inspMessage">MESSAGE</button>
+        <button id="inspAsk">ASK</button>
+        <button id="inspTasks">TASKS</button>
+      </div>
+      <textarea id="inspInput" placeholder="Message or question for this agent…" rows="2" hidden></textarea>
+      <button id="inspSend" hidden>SEND TO AGENT</button>
+      <div id="inspResult" class="mono small"></div>
+    </section>
+
+    <aside id="historyDrawer" class="drawer left" aria-label="Chat and task history" aria-hidden="true">
+      <div class="drawer-head"><span>CHAT / TASK HISTORY</span><button class="drawer-close" data-close="history" aria-label="Close">›</button></div>
+      <input id="historySearch" type="search" placeholder="filter tasks and requests…" aria-label="Filter history">
+      <div id="historyList" class="drawer-list"></div>
+    </aside>
+
+    <aside id="commsDrawer" class="drawer right" aria-label="Agent communications" aria-hidden="true">
+      <div class="drawer-head"><button class="drawer-close" data-close="comms" aria-label="Close">‹</button><span>AGENT COMMS</span></div>
+      <div class="filters" role="group" aria-label="Communication filter">
+        <button data-filter="all" class="active">ALL</button>
+        <button data-filter="task">TASK</button>
+        <button data-filter="agent">AGENT</button>
+        <button data-filter="conversation">CONV</button>
+      </div>
+      <select id="commsAgent" aria-label="Filter by agent"><option value="">all agents</option></select>
+      <div id="commsList" class="drawer-list"></div>
+    </aside>
+
+    <section id="chat" aria-label="Orchestrator command">
+      <div id="chatMeta" class="mono">HERMES ORCHESTRATOR <span id="chatHint">— direct line</span></div>
+      <div class="chat-row">
+        <textarea id="chatInput" rows="1" placeholder="Give a task to HERMES…  (Enter to send · Shift+Enter for newline)" aria-label="Task for orchestrator"></textarea>
+        <button id="sendBtn">SEND ↵</button>
+        <button id="cancelBtn" disabled>CANCEL</button>
+      </div>
+      <div id="chatResponse" class="mono" aria-live="polite"></div>
+    </section>
+
+    <div id="banner" role="alert" hidden></div>
+  </main>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
