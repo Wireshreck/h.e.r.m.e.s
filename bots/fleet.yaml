@@ -18,6 +18,15 @@
 
 orchestrator: hermes-orchestrator
 
+# MCP servers applied to EVERY bot (on top of each bot's own mcp_servers).
+# @REPO@ is expanded by bootstrap_fleet.py to this repository's absolute path
+# (forward slashes) so the fleet works from any checkout location.
+mcp_base:
+  hermes-comms:
+    command: python
+    args: ["@REPO@/comms/server.py"]
+    enabled: true
+
 env_keys:
   openrouter: OPENROUTER_API_KEY
   gemini: GOOGLE_API_KEY

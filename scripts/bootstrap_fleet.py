@@ -124,24 +124,35 @@ def apply_tools(fleet_tools: dict, bot: dict) -> list[str]:
     return [f"  tools: {len(final)} enabled ('{bot['name']}')"]
 
 
-def apply_mcp(bot: dict, dry: bool = False) -> list[str]:
-    """Apply MCP servers declared on a bot (paths normalized to forward slashes)."""
+def apply_mcp(bot: dict, base: dict | None = None, dry: bool = False) -> list[str]:
+    """Apply MCP servers declared on a bot plus the fleet-wide `mcp_base`.
+
+    `@REPO@` in args is expanded to this checkout's path so the config stays
+    portable; paths are normalized to forward slashes as before.
+    """
     if dry:
         return []
     actions = []
-    for server, cfg in (bot.get("mcp_servers") or {}).items():
-        run_hermes(["-p", bot["name"], "config", "set", f"mcp_servers.{server}.command",
-                    str(cfg["command"]).replace("\\", "/")])
-        run_hermes(["-p", bot["name"], "config", "set", f"mcp_servers.{server}.args",
-                    json.dumps([str(a).replace("\\", "/") for a in cfg.get("args", [])])])
+    servers = dict(base or {})
+    servers.update(bot.get("mcp_servers") or {})
+    repo = str(ROOT).replace("\\", "/")
+    for server, cfg in servers.items():
+        command = str(cfg["command"]).replace("@REPO@", repo).replace("\\", "/")
+        args = [str(a).replace("@REPO@", repo).replace("\\", "/") for a in cfg.get("args", [])]
+        run_hermes(["-p", bot["name"], "config", "set", f"mcp_servers.{server}.command", command])
+        run_hermes(["-p", bot["name"], "config", "set", f"mcp_servers.{server}.args", json.dumps(args)])
         run_hermes(["-p", bot["name"], "config", "set", f"mcp_servers.{server}.enabled",
                     "true" if cfg.get("enabled", True) else "false"])
+        if cfg.get("env"):
+            run_hermes(["-p", bot["name"], "config", "set", f"mcp_servers.{server}.env",
+                        json.dumps({str(k): str(v).replace("@REPO@", repo).replace("\\", "/")
+                                    for k, v in cfg["env"].items()})])
         actions.append(f"  mcp: {server}")
     return actions
 
 
 def apply_bot(bot: dict, home: Path, root_env: dict[str, str],
-              fleet_tools: dict, dry: bool = False) -> list[str]:
+              fleet_tools: dict, mcp_base: dict | None = None, dry: bool = False) -> list[str]:
     """Create/repair one bot profile. Returns a list of human-readable actions."""
     name, actions = bot["name"], []
     if not profile_exists(name):
@@ -187,7 +198,7 @@ def apply_bot(bot: dict, home: Path, root_env: dict[str, str],
 
     # Toolsets + MCP servers: one config call each (fast, deterministic)
     actions += apply_tools(fleet_tools, bot)
-    actions += apply_mcp(bot)
+    actions += apply_mcp(bot, mcp_base)
     return actions
 
 
@@ -245,9 +256,10 @@ def main() -> int:
     print()
 
     tools_cfg = fleet.get("tools") or {}
+    mcp_base = fleet.get("mcp_base") or {}
 
     for bot in fleet["bots"]:
-        for line in apply_bot(bot, home, root_env, tools_cfg):
+        for line in apply_bot(bot, home, root_env, tools_cfg, mcp_base):
             print(line)
         print()
 

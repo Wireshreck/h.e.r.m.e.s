@@ -104,6 +104,11 @@ hermes computer-use doctor              # UIAutomation + screen-capture check ma
 - **Personas** — `bots/souls/*.md` are deployed to each profile's `SOUL.md`: identity + output
   contract for every specialist. `AGENTS.md` in this repo is auto-injected into any bot working
   in this directory.
+- **Agent-to-agent communication** — every bot carries the `hermes-comms` MCP server with 10 real
+  tools (`send_message`, `broadcast_message`, `ask_agent`, `reply_to_message`, `get_inbox`,
+  `get_conversation`, `get_agent_status`, `list_agents`, `delegate_task`, `pending_messages`).
+  Messages are typed, persisted in SQLite/WAL, delivered as real turns in the recipient profile,
+  and scoped to tasks via conversations. See [docs/AGENT-COMMUNICATION.md](docs/AGENT-COMMUNICATION.md).
 
 ## Quick start
 
@@ -168,12 +173,19 @@ h.e.r.m.e.s/
 ├── powertoys/
 │   └── cmdpal-hermes/       # Windows Command Palette extension: type a task → H.E.R.M.E.S triage
 │       └── HermesCmdPalExtension/   # C# MSIX COM server (.NET 10 + cmdpal SDK 0.11)
+├── comms/                   # agent-to-agent bus: MCP server, protocol, SQLite store, tests
+│   ├── server.py            # zero-dependency MCP stdio server (10 tools)
+│   ├── tools.py             # tool implementations + safety guards
+│   ├── store.py             # SQLite/WAL persistence + migrations
+│   └── tests/               # 26 tests, no paid APIs
 ├── bots/
 │   ├── fleet.yaml          # declarative roster: models, fallbacks, toolsets, MCP servers
 │   └── souls/              # per-bot persona (identity + output contract) → profile SOUL.md
 ├── scripts/
 │   └── bootstrap_fleet.py  # idempotent installer / verifier for the whole stack
-├── docs/WORKFLOWS.md       # copy-paste fleet recipes (fan-out, pipeline, swarm, review loop)
+├── docs/
+│   ├── WORKFLOWS.md        # copy-paste fleet recipes (fan-out, pipeline, swarm, review loop)
+│   └── AGENT-COMMUNICATION.md  # communication architecture, protocol, tools, limits
 ├── AGENTS.md               # auto-injected workspace protocol for any bot working here
 └── README.md
 ```
