@@ -11,6 +11,12 @@ npm install
 npm start
 ```
 
+If npm 11 blocks install scripts (`install-scripts` warning), run
+`npm install-scripts approve electron` first; if the binary is still missing,
+`node node_modules/electron/install.js` or download the matching
+`electron-v<version>-win32-x64.zip` from the Electron releases into
+`node_modules/electron/dist/`.
+
 Requires Python 3 on PATH (with PyYAML), Hermes Agent installed, and the fleet
 bootstrapped (`python scripts/bootstrap_fleet.py`). Override with
 `HERMES_DESKTOP_PYTHON` and `HERMES_DESKTOP_PORT` (default `8787`).
