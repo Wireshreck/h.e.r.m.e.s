@@ -12,6 +12,7 @@
 
   const state = {
     snap: null, agents: [], transform: { x: 0, y: 0, k: 0.78 },
+    settings: null, models: null, pollTimer: 0, saveTimer: 0, ctxAgent: null,
     positions: loadLayout(), selected: null, highlight: null,
     filter: "all", filterAgent: "", search: "",
     drawers: { history: false, comms: false }, hoverTimer: 0, leaveTimer: 0,
@@ -21,7 +22,34 @@
   function loadLayout() {
     try { return JSON.parse(localStorage.getItem(LAYOUT_KEY) || "{}"); } catch { return {}; }
   }
-  function saveLayout() { localStorage.setItem(LAYOUT_KEY, JSON.stringify(state.positions)); }
+  function saveLayout() {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(state.positions));
+    clearTimeout(state.saveTimer);
+    state.saveTimer = setTimeout(() => {
+      if (state.settings) {
+        state.settings.canvas.positions = state.positions;
+        state.settings.canvas.preset = "custom";
+        post("/api/settings", {
+          canvas: { positions: state.positions, preset: "custom" },
+        }).catch(() => {});
+      }
+    }, 500);
+  }
+  function toast(text) {
+    const el = $("toast");
+    el.textContent = text; el.hidden = false;
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => { el.hidden = true; }, 2600);
+  }
+  function applyTheme(colors) {
+    if (!colors) return;
+    const map = { bg: "--bg", bg2: "--bg-2", line: "--line", ink: "--ink", dim: "--dim",
+                  accent: "--cyan", teal: "--teal", amber: "--amber", red: "--red", violet: "--violet" };
+    for (const [key, cssVar] of Object.entries(map)) {
+      if (colors[key]) document.documentElement.style.setProperty(cssVar, colors[key]);
+    }
+    document.documentElement.style.setProperty("--line-2", colors.line || "#2a303c");
+  }
   function now() { return Date.now(); }
   function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
   function short(s, n = 90) { s = String(s || ""); return s.length > n ? s.slice(0, n) + "…" : s; }
@@ -56,19 +84,29 @@
   }
 
   // -- layout ---------------------------------------------------------------
-  function defaultPositions(agents) {
+  function defaultPositions(agents, preset) {
     const center = agents.find(a => a.orchestrator);
     const others = agents.filter(a => !a.orchestrator);
     const p = {};
     if (center) p[center.id] = { x: 0, y: 0 };
     others.forEach((a, i) => {
-      const ring = i < 6 ? 330 : i < 10 ? 520 : 700;
-      const slot = i < 6 ? i : i < 10 ? i - 6 : i - 10;
-      const per = i < 6 ? 6 : i < 10 ? 4 : 3;
-      const angle = (slot / per) * Math.PI * 2 - Math.PI / 2 + (ring === 520 ? 0.35 : ring === 700 ? -0.2 : 0);
-      p[a.id] = { x: Math.cos(angle) * ring * 1.5, y: Math.sin(angle) * ring };
+      if (preset === "grid") {
+        p[a.id] = { x: ((i % 4) - 1.5) * 460, y: (Math.floor(i / 4) - 1) * 240 };
+      } else if (preset === "radial") {
+        const angle = (i / others.length) * Math.PI * 2 - Math.PI / 2;
+        p[a.id] = { x: Math.cos(angle) * 620, y: Math.sin(angle) * 430 };
+      } else {
+        const ring = i < 6 ? 330 : i < 10 ? 520 : 700;
+        const slot = i < 6 ? i : i < 10 ? i - 6 : i - 10;
+        const per = i < 6 ? 6 : i < 10 ? 4 : 3;
+        const angle = (slot / per) * Math.PI * 2 - Math.PI / 2 + (ring === 520 ? 0.35 : ring === 700 ? -0.2 : 0);
+        p[a.id] = { x: Math.cos(angle) * ring * 1.5, y: Math.sin(angle) * ring };
+      }
     });
     return p;
+  }
+  function canvasPreset() {
+    return state.settings?.canvas?.preset || "algorithm";
   }
   function applyTransform() {
     const t = state.transform;
@@ -144,7 +182,10 @@
     for (const a of state.agents) {
       let el = state.nodeEls.get(a.id);
       if (!el) { el = makeNode(a); state.nodeEls.set(a.id, el); }
-      if (!state.positions[a.id]) state.positions[a.id] = defaultPositions(state.agents)[a.id] || { x: 0, y: 120 };
+      if (!state.positions[a.id]) {
+        const defaults = state.settings?.canvas?.positions || {};
+        state.positions[a.id] = defaults[a.id] || defaultPositions(state.agents, canvasPreset())[a.id] || { x: 0, y: 120 };
+      }
       const p = state.positions[a.id];
       el.style.left = p.x + "px"; el.style.top = p.y + "px";
       el.style.transform = "translate(-50%, -50%)";
@@ -183,12 +224,16 @@
       }
       line.setAttribute("x1", a.x); line.setAttribute("y1", a.y);
       line.setAttribute("x2", b.x); line.setAttribute("y2", b.y);
-      const active = cls === "comm" && (t - (pairs.get(key)?.ts || 0) < 15000);
+      const active = cls === "comm" && (t - (pairs.get(key)?.ts || 0) < (state.settings?.canvas?.commActivityMs || 15000));
       const hi = state.highlight && (state.highlight.id === from || state.highlight.id === to);
       line.setAttribute("class", `edge ${cls}${active ? " active" : ""}${hi ? " highlight" : ""}`);
     };
-    for (const a of state.agents) if (!a.orchestrator && hubId) draw(hubId, a.id, "hub", `hub:${a.id}`);
-    for (const [key, p] of pairs) if (p.from !== p.to) draw(p.from, p.to, "comm", `comm:${key}`);
+    if (state.settings?.canvas?.showHubEdges !== false) {
+      for (const a of state.agents) if (!a.orchestrator && hubId) draw(hubId, a.id, "hub", `hub:${a.id}`);
+    }
+    if (state.settings?.canvas?.showCommEdges !== false) {
+      for (const [key, p] of pairs) if (p.from !== p.to) draw(p.from, p.to, "comm", `comm:${key}`);
+    }
     for (const [key, el] of state.edgeEls) if (!wanted.has(key)) { el.remove(); state.edgeEls.delete(key); }
   }
 
@@ -437,7 +482,11 @@
     await poll();
   });
   $("fitBtn").addEventListener("click", fit);
-  $("resetBtn").addEventListener("click", () => { localStorage.removeItem(LAYOUT_KEY); state.positions = defaultPositions(state.agents); saveLayout(); fit(); });
+  $("resetBtn").addEventListener("click", () => {
+    localStorage.removeItem(LAYOUT_KEY);
+    state.positions = defaultPositions(state.agents, canvasPreset());
+    saveLayout(); fit();
+  });
 
   // -- polling --------------------------------------------------------------
   async function poll() {
@@ -445,6 +494,12 @@
       const snap = await api("/api/snapshot");
       const first = !state.snap;
       state.snap = snap; state.agents = snap.agents || [];
+      if (snap.settings) {
+        const changedPoll = !state.settings || state.settings.behavior?.pollMs !== snap.settings.behavior?.pollMs;
+        state.settings = snap.settings;
+        applyTheme(state.settings.colors);
+        if (changedPoll) schedulePoll();
+      }
       connection(snap.health?.connected, snap.health?.connected ? `runtime online · ${state.agents.length} agents` : "runtime offline");
       renderNodes(); renderEdges();
       if (first) fit();
@@ -460,8 +515,197 @@
     }
   }
 
+  // -- settings & model switching -------------------------------------------
+  async function ensureModels() {
+    if (!state.models) state.models = await api("/api/models");
+    return state.models;
+  }
+  function fillModelSelects(providerSel, modelSel, current) {
+    const models = state.models || { options: {}, current: {} };
+    const providers = Object.keys(models.options || {});
+    providerSel.innerHTML = providers.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+    const drawModels = () => {
+      const list = models.options[providerSel.value] || [];
+      modelSel.innerHTML = list.map(m => `<option value="${esc(m)}">${esc(short(m, 60))}</option>`).join("");
+      if (current && current.model && list.includes(current.model)) modelSel.value = current.model;
+    };
+    providerSel.onchange = drawModels;
+    drawModels();
+    if (current && current.provider && providers.includes(current.provider)) providerSel.value = current.provider;
+    drawModels();
+  }
+
+  function openSettings() {
+    $("settingsModal").hidden = false;
+    const colors = state.settings?.colors || {};
+    $("colorRows").innerHTML = Object.entries(colors).map(([key, value]) =>
+      `<label class="color-row"><input type="color" data-color="${esc(key)}" value="${esc(value)}"> ${esc(key)}</label>`).join("");
+    const c = state.settings?.canvas || {}, b = state.settings?.behavior || {};
+    $("canvasPreset").value = c.preset || "algorithm";
+    $("showHubEdges").checked = c.showHubEdges !== false;
+    $("showCommEdges").checked = c.showCommEdges !== false;
+    $("commActivity").value = Math.round((c.commActivityMs || 15000) / 1000);
+    $("pollMs").value = b.pollMs || 2500;
+    $("revealMs").value = b.revealDelayMs ?? 110;
+    $("retractMs").value = b.retractDelayMs ?? 550;
+    $("autoFit").checked = b.autoFit !== false;
+    ensureModels().then(() => {
+      $("settingsAgent").innerHTML = state.agents.map(a =>
+        `<option value="${esc(a.id)}">${esc(a.id)} — ${esc(a.role)}</option>`).join("");
+      const refreshSettingsModel = () => {
+        const id = $("settingsAgent").value;
+        fillModelSelects($("settingsProvider"), $("settingsModel"), state.models.current[id]);
+        $("settingsModelStatus").textContent = "";
+      };
+      $("settingsAgent").onchange = refreshSettingsModel;
+      refreshSettingsModel();
+    }).catch(err => { $("settingsModelStatus").textContent = err.message; });
+  }
+  function closeSettings() { $("settingsModal").hidden = true; }
+  $("settingsBtn").addEventListener("click", openSettings);
+  $("settingsClose").addEventListener("click", closeSettings);
+  $("settingsModal").addEventListener("click", (e) => { if (e.target === $("settingsModal")) closeSettings(); });
+  document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("active", x === b));
+    document.querySelectorAll(".tab-body").forEach(s => { s.hidden = s.id !== `tab-${b.dataset.tab}`; });
+  }));
+  document.querySelectorAll("[data-theme]").forEach(b => b.addEventListener("click", () => {
+    const themes = {
+      obsidian: { bg: "#08090c", bg2: "#0c0e13", line: "#1c2029", ink: "#d9dee8", dim: "#798291", accent: "#00e5ff", teal: "#00d4aa", amber: "#e8b04b", red: "#ff5f56", violet: "#a78bfa" },
+      mono: { bg: "#0a0a0a", bg2: "#101010", line: "#292929", ink: "#e6e6e6", dim: "#909090", accent: "#d7d7d7", teal: "#a6a6a6", amber: "#c8c8c8", red: "#e0e0e0", violet: "#bfbfbf" },
+      amber: { bg: "#0c0a08", bg2: "#140f0b", line: "#30241a", ink: "#f0e3d2", dim: "#9a8770", accent: "#ffb454", teal: "#c8a465", amber: "#ff9d2e", red: "#ff6b4a", violet: "#d3a8ff" },
+    };
+    const theme = themes[b.dataset.theme];
+    if (!theme) return;
+    Object.entries(theme).forEach(([k, v]) => {
+      const input = document.querySelector(`[data-color="${k}"]`);
+      if (input) input.value = v;
+    });
+    applyTheme(theme);
+    state.settings.colors = { ...theme };
+    post("/api/settings", { colors: theme }).catch(() => {});
+    toast(`theme: ${b.dataset.theme}`);
+  }));
+  $("settingsSave").addEventListener("click", async () => {
+    const colors = {};
+    document.querySelectorAll("[data-color]").forEach(i => { colors[i.dataset.color] = i.value; });
+    const payload = {
+      colors,
+      canvas: {
+        preset: $("canvasPreset").value,
+        positions: state.positions,
+        showHubEdges: $("showHubEdges").checked,
+        showCommEdges: $("showCommEdges").checked,
+        commActivityMs: Math.max(1, Number($("commActivity").value) || 15) * 1000,
+      },
+      behavior: {
+        pollMs: Number($("pollMs").value) || 2500,
+        revealDelayMs: Number($("revealMs").value) || 0,
+        retractDelayMs: Number($("retractMs").value) || 0,
+        autoFit: $("autoFit").checked,
+      },
+    };
+    try {
+      state.settings = await post("/api/settings", payload);
+      applyTheme(state.settings.colors); schedulePoll(); renderEdges();
+      toast("settings saved"); closeSettings();
+    } catch (err) { toast("save failed: " + err.message); }
+  });
+  $("settingsReset").addEventListener("click", async () => {
+    try {
+      state.settings = await post("/api/settings/reset", {});
+      applyTheme(state.settings.colors);
+      state.positions = defaultPositions(state.agents, "algorithm");
+      saveLayout(); renderNodes(); renderEdges(); fit(); schedulePoll();
+      closeSettings(); toast("settings reset");
+    } catch (err) { toast("reset failed: " + err.message); }
+  });
+  $("canvasPreset").addEventListener("change", (e) => {
+    state.positions = defaultPositions(state.agents, e.target.value);
+    renderNodes(); renderEdges(); fit(); saveLayout();
+  });
+  $("savePositions").addEventListener("click", async () => {
+    try {
+      state.settings = await post("/api/settings", { canvas: { positions: state.positions, preset: "custom" } });
+      toast("current layout saved as default");
+    } catch (err) { toast(err.message); }
+  });
+  $("clearPositions").addEventListener("click", async () => {
+    try {
+      state.settings = await post("/api/settings", { canvas: { positions: {}, preset: "algorithm" } });
+      state.positions = defaultPositions(state.agents, "algorithm");
+      renderNodes(); renderEdges(); fit();
+      toast("saved positions cleared");
+    } catch (err) { toast(err.message); }
+  });
+  async function applyModelFrom(agentId, provider, model, statusEl) {
+    if (!model || !provider) return;
+    statusEl.textContent = "applying…";
+    try {
+      const result = await post(`/api/agents/${encodeURIComponent(agentId)}/model`, { provider, model });
+      statusEl.textContent = `${result.agent}: ${result.provider} / ${short(result.model, 50)}`;
+      toast(`model set: ${agentId}`);
+      state.models = null;
+      await poll();
+    } catch (err) { statusEl.textContent = err.message; toast("model change failed"); }
+  }
+  $("settingsApplyModel").addEventListener("click", () => {
+    const custom = $("settingsCustomModel").value.trim();
+    applyModelFrom($("settingsAgent").value, $("settingsProvider").value,
+                   custom || $("settingsModel").value, $("settingsModelStatus"));
+  });
+
+  // -- node right-click menu -------------------------------------------------
+  stage.addEventListener("contextmenu", (e) => {
+    const el = e.target.closest(".node");
+    if (!el) { $("contextMenu").hidden = true; return; }
+    e.preventDefault();
+    const id = el.dataset.id;
+    state.ctxAgent = id;
+    const agent = state.agents.find(a => a.id === id);
+    $("ctxTitle").textContent = (id || "").toUpperCase();
+    $("contextMenu").hidden = false;
+    const rect = stage.getBoundingClientRect();
+    $("contextMenu").style.left = Math.min(e.clientX - rect.left, rect.width - 240) + "px";
+    $("contextMenu").style.top = Math.min(e.clientY - rect.top, rect.height - 250) + "px";
+    ensureModels().then(() => fillModelSelects($("ctxProvider"), $("ctxModel"), state.models.current[id]))
+      .catch(() => { $("ctxProvider").innerHTML = ""; $("ctxModel").innerHTML = ""; });
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (!e.target.closest("#contextMenu")) $("contextMenu").hidden = true;
+  });
+  $("ctxInspect").addEventListener("click", () => { inspect(state.ctxAgent); $("contextMenu").hidden = true; });
+  $("ctxFocus").addEventListener("click", () => {
+    const p = state.positions[state.ctxAgent];
+    if (p) {
+      state.transform.x = stage.clientWidth / 2 - p.x * state.transform.k;
+      state.transform.y = stage.clientHeight / 2 - p.y * state.transform.k;
+      applyTransform();
+    }
+    $("contextMenu").hidden = true;
+  });
+  $("ctxApplyModel").addEventListener("click", () => {
+    applyModelFrom(state.ctxAgent, $("ctxProvider").value, $("ctxModel").value, $("toast"));
+    $("contextMenu").hidden = true;
+  });
+  $("ctxResetPos").addEventListener("click", () => {
+    delete state.positions[state.ctxAgent];
+    state.positions[state.ctxAgent] = defaultPositions(state.agents, canvasPreset())[state.ctxAgent] || { x: 0, y: 120 };
+    saveLayout(); renderNodes(); renderEdges(); fit();
+    $("contextMenu").hidden = true;
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.altKey && e.key.toLowerCase() === "s") { e.preventDefault(); openSettings(); }
+  });
+
+  function schedulePoll() {
+    clearInterval(state.pollTimer);
+    state.pollTimer = setInterval(poll, Math.max(500, state.settings?.behavior?.pollMs || 2500));
+  }
+
   applyTransform();
   poll();
-  setInterval(poll, 2500);
+  schedulePoll();
   window.addEventListener("resize", () => { drawAscii(); });
 })();

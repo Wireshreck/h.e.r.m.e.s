@@ -67,6 +67,29 @@ Electron window (main.js)  ── loads ──>  http://127.0.0.1:8787
 - Edge drawers reveal on cursor proximity with delays; Escape closes them;
   reduced-motion preferences disable transitions and the edge animation.
 
+## Settings and per-agent models
+
+The **⚙ SETTINGS** button (Alt+S) opens four tabs:
+
+- **Appearance** — live colour customisation for the canvas palette (background,
+  ink, accent, edge/status colours), with Obsidian / Mono / Amber presets.
+- **Canvas** — choose the default node layout (orbital, radial, grid), save the
+  current arrangement as the default, clear saved positions, toggle hub/comms
+  edges, set the communication highlight window. Dragging a node persists to
+  the saved layout automatically.
+- **Behavior** — refresh interval, edge reveal/retract delays, auto-fit.
+- **Models** — pick any registered agent, choose a real provider/model from the
+  fleet's configured primaries and fallbacks (or type a custom model), and apply.
+  This writes that profile's `model.provider` / `model.default` through the
+  Hermes CLI, so the change is effective for its next turn.
+
+**Right-click any agent node** for a context menu: Inspect, Focus/Zoom, a
+provider + model dropdown with **Set Model**, and Reset Position. Model choices
+come from real configuration — the UI never invents catalog entries.
+
+Settings persist in `%LOCALAPPDATA%\hermes\desktop-settings.json`, validated and
+written atomically by the backend; **Reset Defaults** removes it.
+
 ## API
 
 | Route | Purpose |
@@ -74,6 +97,8 @@ Electron window (main.js)  ── loads ──>  http://127.0.0.1:8787
 | `GET /api/health` | Runtime / DB connectivity (never claims connected when not) |
 | `GET /api/snapshot` | Cached combined state (agents, tasks, events, messages, conversations, jobs) |
 | `GET /api/agents`, `/api/tasks`, `/api/messages`, `/api/conversations`, `/api/jobs` | Individual reads |
+| `GET/POST /api/settings`, `POST /api/settings/reset` | Persisted UI settings (validated) |
+| `GET /api/models`, `POST /api/agents/<id>/model` | Real model choices / per-bot model changes |
 | `POST /api/tasks` | Submit a task to the orchestrator (returns job id) |
 | `POST /api/jobs/<id>/cancel` | Cancel a running job |
 | `POST /api/messages`, `/api/ask` | Send a message / ask an agent via `comms` |

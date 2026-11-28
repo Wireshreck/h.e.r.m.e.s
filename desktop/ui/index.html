@@ -14,6 +14,7 @@
     <nav class="toolbar" aria-label="Canvas controls">
       <button id="fitBtn" title="Zoom to fit">FIT</button>
       <button id="resetBtn" title="Reset node layout">RESET</button>
+      <button id="settingsBtn" title="Settings (Alt+S)">⚙ SETTINGS</button>
       <button id="historyBtn" title="Toggle history (Alt+H)" aria-expanded="false">≡ HISTORY</button>
       <button id="commsBtn" title="Toggle communications (Alt+C)" aria-expanded="false">COMMS ≡</button>
     </nav>
@@ -70,6 +71,79 @@
     </section>
 
     <div id="banner" role="alert" hidden></div>
+
+    <div id="contextMenu" hidden role="menu" aria-label="Node actions">
+      <div class="ctx-title" id="ctxTitle">—</div>
+      <button id="ctxInspect" role="menuitem">INSPECT AGENT</button>
+      <button id="ctxFocus" role="menuitem">FOCUS / ZOOM</button>
+      <div class="ctx-model">
+        <div class="ctx-label">MODEL</div>
+        <select id="ctxProvider" aria-label="Provider"></select>
+        <select id="ctxModel" aria-label="Model"></select>
+        <button id="ctxApplyModel" role="menuitem">SET MODEL</button>
+      </div>
+      <button id="ctxResetPos" role="menuitem">RESET POSITION</button>
+    </div>
+
+    <div id="settingsModal" class="modal" hidden role="dialog" aria-modal="true" aria-label="H.E.R.M.E.S settings">
+      <div class="modal-panel">
+        <div class="modal-head"><span>SETTINGS / H.E.R.M.E.S</span><button id="settingsClose" aria-label="Close settings">×</button></div>
+        <div class="tabs" role="tablist">
+          <button data-tab="appearance" class="active" role="tab">APPEARANCE</button>
+          <button data-tab="canvas" role="tab">CANVAS</button>
+          <button data-tab="behavior" role="tab">BEHAVIOR</button>
+          <button data-tab="models" role="tab">MODELS</button>
+        </div>
+        <div class="tab-scroll">
+          <section id="tab-appearance" class="tab-body">
+            <p class="hint">Theme colours are applied live. Values are saved to your settings file.</p>
+            <div class="preset-row" role="group" aria-label="Theme presets">
+              <button data-theme="obsidian">OBSIDIAN</button>
+              <button data-theme="mono">MONO</button>
+              <button data-theme="amber">AMBER</button>
+            </div>
+            <div id="colorRows" class="color-grid"></div>
+          </section>
+          <section id="tab-canvas" class="tab-body" hidden>
+            <p class="hint">Default node layout used whenever the canvas is reset.</p>
+            <label class="field">Default layout
+              <select id="canvasPreset">
+                <option value="algorithm">ORBITAL (default)</option>
+                <option value="radial">RADIAL</option>
+                <option value="grid">GRID</option>
+                <option value="custom">SAVED POSITIONS</option>
+              </select>
+            </label>
+            <div class="preset-row">
+              <button id="savePositions">SAVE CURRENT AS DEFAULT</button>
+              <button id="clearPositions">CLEAR SAVED POSITIONS</button>
+            </div>
+            <label class="check"><input type="checkbox" id="showHubEdges"> Show orchestrator connections</label>
+            <label class="check"><input type="checkbox" id="showCommEdges"> Show agent communication edges</label>
+            <label class="field">Communication highlight window (seconds)
+              <input type="number" id="commActivity" min="1" max="300" step="1">
+            </label>
+          </section>
+          <section id="tab-behavior" class="tab-body" hidden>
+            <label class="field">Refresh interval (ms) <input type="number" id="pollMs" min="500" max="60000" step="100"></label>
+            <label class="field">Edge reveal delay (ms) <input type="number" id="revealMs" min="0" max="2000" step="10"></label>
+            <label class="field">Edge retract delay (ms) <input type="number" id="retractMs" min="0" max="5000" step="50"></label>
+            <label class="check"><input type="checkbox" id="autoFit"> Auto-fit canvas on first load</label>
+          </section>
+          <section id="tab-models" class="tab-body" hidden>
+            <p class="hint">Choose a real configured model for any bot. Changes are written to that profile's config.</p>
+            <label class="field">Agent <select id="settingsAgent"></select></label>
+            <label class="field">Provider <select id="settingsProvider"></select></label>
+            <label class="field">Model <select id="settingsModel"></select></label>
+            <label class="field">Custom model (optional) <input id="settingsCustomModel" placeholder="provider/model:free"></label>
+            <button id="settingsApplyModel">APPLY MODEL</button>
+            <div id="settingsModelStatus" class="mono small"></div>
+          </section>
+        </div>
+        <div class="modal-foot"><button id="settingsReset">RESET DEFAULTS</button><button id="settingsSave">SAVE SETTINGS</button></div>
+      </div>
+    </div>
+    <div id="toast" role="status" hidden></div>
   </main>
 </div>
 <script src="/app.js"></script>

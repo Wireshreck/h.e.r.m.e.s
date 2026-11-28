@@ -158,6 +158,52 @@ class BackendTestCase(unittest.TestCase):
             self.assertIn(key, snap)
         self.assertEqual(len(snap["agents"]), 13)
 
+    # -- settings & models ---------------------------------------------------
+    def test_settings_roundtrip_and_reset(self):
+        defaults = self.runtime.settings()
+        self.assertEqual(defaults["colors"]["accent"], "#00e5ff")
+        saved = self.runtime.save_settings({
+            "colors": {"accent": "#ff0000", "bg": "not-a-color"},
+            "canvas": {"positions": {"writer": {"x": 42.5, "y": -7}}, "preset": "custom",
+                       "showHubEdges": False, "commActivityMs": 5000},
+            "behavior": {"pollMs": 900, "revealDelayMs": 50},
+        })
+        self.assertEqual(saved["colors"]["accent"], "#ff0000")
+        self.assertEqual(saved["colors"]["bg"], defaults["colors"]["bg"])
+        self.assertEqual(saved["canvas"]["positions"]["writer"], {"x": 42.5, "y": -7.0})
+        self.assertFalse(saved["canvas"]["showHubEdges"])
+        self.assertEqual(saved["canvas"]["commActivityMs"], 5000)
+        self.assertEqual(saved["behavior"]["pollMs"], 900)
+        self.assertEqual(self.runtime.settings()["behavior"]["pollMs"], 900)
+        reset = self.runtime.reset_settings()
+        self.assertEqual(reset["colors"]["accent"], "#00e5ff")
+        self.assertFalse(self.settings_path_exists())
+
+    def settings_path_exists(self):
+        return (self.home / "desktop-settings.json").exists()
+
+    def test_models_are_real_configured_models(self):
+        data = self.runtime.models()
+        self.assertIn("options", data)
+        self.assertIn("current", data)
+        self.assertIn("hermes-orchestrator", data["current"])
+        self.assertTrue(data["current"]["hermes-orchestrator"]["model"])
+        self.assertTrue(any("gemini" in p for p in data["options"]))
+
+    def test_set_model_updates_profile_config(self):
+        calls = []
+        def fake_run(self_, args, timeout=20):
+            calls.append(args)
+            return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        with patch.object(backend.Runtime, "_run", fake_run), \
+             patch.object(backend.Runtime, "find_hermes", staticmethod(lambda: "C:/hermes.cmd")):
+            result = self.runtime.set_model("writer", "openrouter", "some/model:free")
+        self.assertEqual(result["agent"], "writer")
+        self.assertTrue(any("model.provider" in c for c in calls))
+        self.assertTrue(any("model.default" in c for c in calls))
+        with self.assertRaises(backend.ToolError):
+            self.runtime.set_model("unknown-bot", "openrouter", "x/y")
+
     # -- HTTP surface --------------------------------------------------------
     def test_http_roundtrip(self):
         backend.RUNTIME = self.runtime
@@ -185,6 +231,9 @@ class BackendTestCase(unittest.TestCase):
             self.assertTrue(sent["message_id"])
             self.assertEqual(len(get("/api/messages")["messages"]), 1)
             self.assertEqual(len(get("/api/snapshot")["agents"]), 13)
+            saved = post("/api/settings", {"colors": {"accent": "#123456"}})
+            self.assertEqual(get("/api/settings")["colors"]["accent"], "#123456")
+            self.assertIn("hermes-orchestrator", get("/api/models")["current"])
             self.assertIn("<canvas", urllib.request.urlopen(
                 f"http://127.0.0.1:{port}/", timeout=10).read().decode())
         finally:

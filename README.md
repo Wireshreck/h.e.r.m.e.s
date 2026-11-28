@@ -110,8 +110,9 @@ hermes computer-use doctor              # UIAutomation + screen-capture check ma
   Messages are typed, persisted in SQLite/WAL, delivered as real turns in the recipient profile,
   and scoped to tasks via conversations. See [docs/AGENT-COMMUNICATION.md](docs/AGENT-COMMUNICATION.md).
 - **Desktop canvas** — `desktop/` is a real Electron window over the same runtime: interactive
-  node graph, orchestrator chat, edge-triggered history/comms drawers. See
-  [desktop/README.md](desktop/README.md). Run with `cd desktop && npm start`.
+  node graph, orchestrator chat, edge-triggered history/comms drawers, persisted settings
+  (colours, default node layout, intervals) and per-bot model switching via ⚙ Settings or
+  right-click a node. See [desktop/README.md](desktop/README.md). Run with `cd desktop && npm start`.
 - **Desktop installer wizard** — `HERMES-Desktop-Setup.exe` (release v0.2.0) installs the
   prebuilt canvas app with **Desktop / Start Menu shortcuts** and **this user / all users**
   scopes. Source: `releases/install-hermes-desktop.ps1`.

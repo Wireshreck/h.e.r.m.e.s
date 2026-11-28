@@ -45,6 +45,27 @@ ORCHESTRATOR = "hermes-orchestrator"
 SNAPSHOT_TTL = 2.0  # seconds — near-real-time without hammering the CLI/DB
 MAX_INPUT = 20_000
 
+DEFAULT_SETTINGS: dict[str, Any] = {
+    "version": 1,
+    "colors": {
+        "bg": "#08090c", "bg2": "#0c0e13", "line": "#1c2029", "ink": "#d9dee8",
+        "dim": "#798291", "accent": "#00e5ff", "teal": "#00d4aa", "amber": "#e8b04b",
+        "red": "#ff5f56", "violet": "#a78bfa",
+    },
+    "canvas": {
+        "positions": {}, "preset": "algorithm", "showHubEdges": True,
+        "showCommEdges": True, "commActivityMs": 15000,
+    },
+    "behavior": {
+        "pollMs": 2500, "revealDelayMs": 110, "retractDelayMs": 550, "autoFit": True,
+    },
+}
+
+COLOR_KEYS = frozenset(DEFAULT_SETTINGS["colors"])
+CANVAS_BOOL_KEYS = frozenset(("showHubEdges", "showCommEdges", "autoFit"))
+BEHAVIOR_BOOL_KEYS = frozenset(("autoFit",))
+HEX = __import__("re").compile(r"^#[0-9a-fA-F]{6}$")
+
 
 def hermes_home() -> Path:
     env = os.environ.get("HERMES_HOME")
@@ -85,6 +106,7 @@ class Runtime:
         self.comms = CommsService(self.config, self.store)
         self.lock = threading.RLock()
         self.jobs: dict[str, Job] = {}
+        self.settings_path = self.home / "desktop-settings.json"
         self._snapshot: dict[str, Any] | None = None
         self._snapshot_at = 0.0
         self._hermes_cache: tuple[float, list[dict[str, Any]]] = (0.0, [])
@@ -257,6 +279,112 @@ class Runtime:
     def conversations(self, limit: int = 50) -> list[dict[str, Any]]:
         return self.store.list_conversations(limit=limit)
 
+    # -- settings & models --------------------------------------------------
+    def settings(self) -> dict[str, Any]:
+        data = json.loads(json.dumps(DEFAULT_SETTINGS))  # deep copy
+        try:
+            if self.settings_path.exists():
+                stored = json.loads(self.settings_path.read_text(encoding="utf-8"))
+                for section in ("colors", "canvas", "behavior"):
+                    if isinstance(stored.get(section), dict):
+                        data[section].update(stored[section])
+        except (OSError, json.JSONDecodeError):
+            pass  # a corrupt settings file never breaks the app
+        return data
+
+    def save_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
+        current = self.settings()
+        for key, value in (payload.get("colors") or {}).items():
+            if key in COLOR_KEYS and isinstance(value, str) and HEX.fullmatch(value):
+                current["colors"][key] = value
+        canvas = payload.get("canvas") or {}
+        if isinstance(canvas.get("positions"), dict):
+            positions = {}
+            for agent_id, pos in canvas["positions"].items():
+                if isinstance(pos, dict) and all(
+                    isinstance(pos.get(k), (int, float)) for k in ("x", "y")
+                ):
+                    positions[str(agent_id)[:64]] = {
+                        "x": float(pos["x"]), "y": float(pos["y"]),
+                    }
+            current["canvas"]["positions"] = positions
+        for key in ("showHubEdges", "showCommEdges"):
+            if key in canvas and isinstance(canvas[key], bool):
+                current["canvas"][key] = canvas[key]
+        if isinstance(canvas.get("commActivityMs"), int):
+            current["canvas"]["commActivityMs"] = min(max(canvas["commActivityMs"], 1000), 300000)
+        if canvas.get("preset") in ("algorithm", "radial", "grid", "custom"):
+            current["canvas"]["preset"] = canvas["preset"]
+        behavior = payload.get("behavior") or {}
+        for key, lo, hi in (("pollMs", 500, 60000), ("revealDelayMs", 0, 2000),
+                            ("retractDelayMs", 0, 5000)):
+            if isinstance(behavior.get(key), int):
+                current["behavior"][key] = min(max(behavior[key], lo), hi)
+        if isinstance(behavior.get("autoFit"), bool):
+            current["behavior"]["autoFit"] = behavior["autoFit"]
+        self.settings_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.settings_path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(current, indent=2), encoding="utf-8")
+        os.replace(tmp, self.settings_path)
+        self._snapshot = None  # settings affect snapshots (positions/edges)
+        return current
+
+    def reset_settings(self) -> dict[str, Any]:
+        try:
+            self.settings_path.unlink()
+        except OSError:
+            pass
+        self._snapshot = None
+        return self.settings()
+
+    def models(self) -> dict[str, Any]:
+        """Model choices are real configured models, never invented catalog data."""
+        options: dict[str, list[str]] = {}
+        try:
+            data = (ROOT / "bots" / "fleet.yaml").read_text(encoding="utf-8")
+            if yaml is not None:
+                fleet = yaml.safe_load(data) or {}
+                for bot in fleet.get("bots") or []:
+                    provider = str(bot.get("provider") or "")
+                    for model in [bot.get("model")] + [f.get("model") for f in (bot.get("fallback") or [])]:
+                        if model and provider:
+                            options.setdefault(provider, [])
+                            if str(model) not in options[provider]:
+                                options[provider].append(str(model))
+        except Exception:
+            pass
+        current = {}
+        for agent in load_agents():
+            path = self.home / "profiles" / agent.id / "config.yaml"
+            provider, model = agent.provider, agent.model
+            if path.exists() and yaml is not None:
+                try:
+                    section = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("model") or {}
+                    provider = str(section.get("provider") or provider)
+                    model = str(section.get("default") or model)
+                except Exception:
+                    pass
+            current[agent.id] = {"provider": provider, "model": model}
+            if provider and model:
+                options.setdefault(provider, [])
+                if model not in options[provider]:
+                    options[provider].append(model)
+        return {"options": options, "current": current, "customAllowed": True}
+
+    def set_model(self, agent_id: str, provider: str, model: str) -> dict[str, Any]:
+        known = {a.id for a in load_agents()}
+        if agent_id not in known:
+            raise ToolError(f"unknown agent: {agent_id}")
+        provider, model = str(provider).strip(), str(model).strip()
+        if not provider or not model or len(model) > 200 or any(c in model for c in "\r\n\x00"):
+            raise ToolError("invalid provider/model")
+        self._run(["-p", agent_id, "config", "set", "model.provider", provider])
+        self._run(["-p", agent_id, "config", "set", "model.default", model])
+        sys.stderr.write(f"[desktop] model_change agent={agent_id} provider={provider} model={model}\n")
+        self._hermes_cache = (0.0, [])
+        self._snapshot = None
+        return {"agent": agent_id, "provider": provider, "model": model}
+
     # -- actions ------------------------------------------------------------
     def submit_task(self, text: str) -> dict[str, Any]:
         text = str(text).strip()
@@ -323,6 +451,7 @@ class Runtime:
             return self._snapshot
         data = {
             "health": self.health(),
+            "settings": self.settings(),
             "agents": self.agents(),
             "tasks": self.tasks()[:100],
             "events": self.task_events(),
@@ -414,6 +543,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"conversations": RUNTIME.conversations()})
             if path == "/api/jobs":
                 return self._json({"jobs": RUNTIME.job_list()})
+            if path == "/api/settings":
+                return self._json(RUNTIME.settings())
+            if path == "/api/models":
+                return self._json(RUNTIME.models())
             self._json({"error": "not found"}, 404)
         except (ToolError, ValueError) as exc:
             self._json({"error": str(exc)}, 400)
@@ -443,6 +576,14 @@ class Handler(BaseHTTPRequestHandler):
                 ))
             if path.startswith("/api/jobs/") and path.endswith("/cancel"):
                 return self._json(RUNTIME.cancel_job(path.split("/")[3]))
+            if path == "/api/settings":
+                return self._json(RUNTIME.save_settings(data))
+            if path == "/api/settings/reset":
+                return self._json(RUNTIME.reset_settings())
+            if path.startswith("/api/agents/") and path.endswith("/model"):
+                agent_id = path.split("/")[3]
+                return self._json(RUNTIME.set_model(agent_id, str(data.get("provider") or ""),
+                                                    str(data.get("model") or "")))
             self._json({"error": "not found"}, 404)
         except (ToolError, KeyError, ValueError) as exc:
             self._json({"error": str(exc)}, 400)

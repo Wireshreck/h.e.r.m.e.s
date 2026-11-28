@@ -23,6 +23,10 @@ test('HTML exposes every element the UI binds', () => {
     'chat', 'chatInput', 'sendBtn', 'cancelBtn', 'chatResponse',
     'historyDrawer', 'historyList', 'historySearch', 'commsDrawer', 'commsList',
     'connText', 'fitBtn', 'resetBtn', 'historyBtn', 'commsBtn', 'banner',
+    'settingsBtn', 'settingsModal', 'settingsSave', 'settingsReset', 'colorRows',
+    'canvasPreset', 'showHubEdges', 'showCommEdges', 'pollMs',
+    'settingsAgent', 'settingsProvider', 'settingsModel', 'settingsApplyModel',
+    'contextMenu', 'ctxProvider', 'ctxModel', 'ctxApplyModel', 'ctxResetPos', 'toast',
   ]) {
     assert.match(html, new RegExp(`id="${id}"`), `missing #${id}`);
   }
@@ -42,10 +46,12 @@ test('canvas styling: dark theme, edge drawers, reduced motion', () => {
 
 test('UI talks only to the backend API (no embedded fake data)', () => {
   const js = fs.readFileSync(path.join(root, 'ui/app.js'), 'utf8');
-  for (const route of ['/api/snapshot', '/api/tasks', '/api/messages', '/api/jobs/']) {
+  for (const route of ['/api/snapshot', '/api/tasks', '/api/messages', '/api/jobs/', '/api/settings', '/api/models', '/api/agents/']) {
     assert.ok(js.includes(route), `missing ${route}`);
   }
   assert.ok(js.includes('2500'), 'polling interval expected');
+  assert.ok(js.includes('contextmenu'), 'right-click model menu expected');
+  assert.ok(js.includes('data-color'), 'colour customisation expected');
   assert.ok(!/(fake|mock|dummy|lorem)/i.test(js), 'no placeholder content allowed');
 });
 
