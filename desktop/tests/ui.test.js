@@ -55,6 +55,23 @@ test('UI talks only to the backend API (no embedded fake data)', () => {
   assert.ok(!/(fake|mock|dummy|lorem)/i.test(js), 'no placeholder content allowed');
 });
 
+test('canvas pan does not swallow menu/modal clicks', () => {
+  const js = fs.readFileSync(path.join(root, 'ui/app.js'), 'utf8');
+  const pointerLine = js.split('\n').find(l => l.includes('#contextMenu, #settingsModal, #toast') && l.includes('closest'));
+  assert.ok(pointerLine, 'pointerdown exclusion must include context menu, settings modal and toast');
+  const wheelLine = js.split('\n').find(l => l.includes('addEventListener("wheel"') || l.includes("addEventListener('wheel'"));
+  assert.ok(wheelLine && js.slice(js.indexOf(wheelLine), js.indexOf(wheelLine) + 300).includes('#settingsModal'),
+    'wheel zoom must not capture events over the settings modal');
+});
+
+test('drawers retract using configured delays and saved presets are respected', () => {
+  const js = fs.readFileSync(path.join(root, 'ui/app.js'), 'utf8');
+  assert.ok(js.includes('behavior?.revealDelayMs'), 'reveal delay setting unused');
+  assert.ok(js.includes('behavior?.retractDelayMs'), 'retract delay setting unused');
+  assert.ok(js.includes('preset === "custom"'), 'saved positions must only apply to the custom preset');
+  assert.ok(js.includes('Escape') && js.includes('closeSettings()'), 'Escape must close settings');
+});
+
 test('Electron shell starts the backend and shuts it down', () => {
   const js = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
   assert.match(js, /backend\.py/);

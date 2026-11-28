@@ -179,12 +179,14 @@
   function renderNodes() {
     const ids = new Set(state.agents.map(a => a.id));
     for (const [id, el] of state.nodeEls) if (!ids.has(id)) { el.remove(); state.nodeEls.delete(id); }
+    const preset = canvasPreset();
+    const saved = preset === "custom" ? (state.settings?.canvas?.positions || {}) : {};
+    const defaults = defaultPositions(state.agents, preset);
     for (const a of state.agents) {
       let el = state.nodeEls.get(a.id);
       if (!el) { el = makeNode(a); state.nodeEls.set(a.id, el); }
       if (!state.positions[a.id]) {
-        const defaults = state.settings?.canvas?.positions || {};
-        state.positions[a.id] = defaults[a.id] || defaultPositions(state.agents, canvasPreset())[a.id] || { x: 0, y: 120 };
+        state.positions[a.id] = saved[a.id] || defaults[a.id] || { x: 0, y: 120 };
       }
       const p = state.positions[a.id];
       el.style.left = p.x + "px"; el.style.top = p.y + "px";
@@ -249,7 +251,9 @@
     hideTip();
   }
   stage.addEventListener("pointerdown", (e) => {
-    if (e.target.closest(".node, #chat, #inspector, .drawer, #topbar")) return;
+    // Never start a canvas pan on interactive UI: pointer capture on #stage
+    // would swallow the subsequent click on menu/modal buttons.
+    if (e.target.closest(".node, #chat, #inspector, .drawer, #topbar, #contextMenu, #settingsModal, #toast")) return;
     if (e.button !== 0 && e.button !== 1) return;
     state.drag = { type: "pan", startX: e.clientX, startY: e.clientY,
                    origin: { ...state.transform } };
@@ -279,7 +283,7 @@
     setTimeout(() => { state.moved = false; }, 0);
   });
   stage.addEventListener("wheel", (e) => {
-    if (e.target.closest("#chat, .drawer, #inspector")) return;
+    if (e.target.closest("#chat, .drawer, #inspector, #contextMenu, #settingsModal, #toast")) return;
     e.preventDefault();
     const rect = stage.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
@@ -364,32 +368,39 @@
   $("commsBtn").addEventListener("click", () => toggleDrawer("comms"));
   document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => closeDrawer(b.dataset.close)));
   function edgeProximity(e) {
-    if (state.drag || e.target.closest(".drawer")) return;
+    if (state.drag || e.target.closest(".drawer, #settingsModal, #contextMenu, #toast")) return;
     const rect = stage.getBoundingClientRect();
     const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const px = e.clientX, py = e.clientY;
     const edge = 14, activeTop = 50, activeBottom = rect.height - 170;
+    const reveal = reduced ? 0 : (state.settings?.behavior?.revealDelayMs ?? 110);
+    const retract = reduced ? 0 : (state.settings?.behavior?.retractDelayMs ?? 550);
     clearTimeout(state.hoverTimer); clearTimeout(state.leaveTimer);
     const left = x < edge && y > activeTop && y < activeBottom;
     const right = x > rect.width - edge && y > activeTop && y < activeBottom;
     if (left || right) {
       const which = left ? "history" : "comms";
-      state.hoverTimer = setTimeout(() => openDrawer(which), reduced ? 0 : 110);
+      state.hoverTimer = setTimeout(() => openDrawer(which), reveal);
     } else {
       state.leaveTimer = setTimeout(() => {
+        if (state.drag) return;
         for (const which of ["history", "comms"]) {
-          const el = which === "history" ? historyDrawer : commsDrawer;
-          const r = el.getBoundingClientRect();
-          if (state.drag) return;
-          if (which === "history" && state.drawers[which] && !(r.left <= 14)) closeDrawer(which);
-          if (which === "comms" && state.drawers[which] && !(window.innerWidth - r.right <= 14)) closeDrawer(which);
+          if (!state.drawers[which]) continue;
+          const r = (which === "history" ? historyDrawer : commsDrawer).getBoundingClientRect();
+          const inside = px >= r.left && px <= r.right && py >= r.top && py <= r.bottom;
+          const inEdge = which === "history" ? px <= 22 : px >= window.innerWidth - 22;
+          if (!inside && !inEdge) closeDrawer(which);
         }
-      }, reduced ? 0 : 550);
+      }, retract);
     }
   }
   window.addEventListener("keydown", (e) => {
     if (e.altKey && e.key.toLowerCase() === "h") { e.preventDefault(); toggleDrawer("history"); }
     if (e.altKey && e.key.toLowerCase() === "c") { e.preventDefault(); toggleDrawer("comms"); }
-    if (e.key === "Escape") { closeInspector(); closeDrawer("history"); closeDrawer("comms"); }
+    if (e.key === "Escape") {
+      closeInspector(); closeDrawer("history"); closeDrawer("comms");
+      closeSettings(); $("contextMenu").hidden = true;
+    }
   });
 
   function renderHistory() {
@@ -483,9 +494,10 @@
   });
   $("fitBtn").addEventListener("click", fit);
   $("resetBtn").addEventListener("click", () => {
-    localStorage.removeItem(LAYOUT_KEY);
+    clearTimeout(state.saveTimer);
     state.positions = defaultPositions(state.agents, canvasPreset());
-    saveLayout(); fit();
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(state.positions));
+    renderNodes(); renderEdges(); fit();
   });
 
   // -- polling --------------------------------------------------------------
@@ -496,8 +508,9 @@
       state.snap = snap; state.agents = snap.agents || [];
       if (snap.settings) {
         const changedPoll = !state.settings || state.settings.behavior?.pollMs !== snap.settings.behavior?.pollMs;
+        const editing = !$("settingsModal").hidden;
         state.settings = snap.settings;
-        applyTheme(state.settings.colors);
+        if (!editing) applyTheme(state.settings.colors); // don't undo unsaved edits
         if (changedPoll) schedulePoll();
       }
       connection(snap.health?.connected, snap.health?.connected ? `runtime online · ${state.agents.length} agents` : "runtime offline");
@@ -589,11 +602,17 @@
   $("settingsSave").addEventListener("click", async () => {
     const colors = {};
     document.querySelectorAll("[data-color]").forEach(i => { colors[i.dataset.color] = i.value; });
+    const preset = $("canvasPreset").value;
+    if (preset !== "custom") {
+      // A generated layout must not be overridden by stale saved positions.
+      state.positions = defaultPositions(state.agents, preset);
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(state.positions));
+    }
     const payload = {
       colors,
       canvas: {
-        preset: $("canvasPreset").value,
-        positions: state.positions,
+        preset,
+        positions: preset === "custom" ? state.positions : {},
         showHubEdges: $("showHubEdges").checked,
         showCommEdges: $("showCommEdges").checked,
         commActivityMs: Math.max(1, Number($("commActivity").value) || 15) * 1000,
@@ -615,14 +634,21 @@
     try {
       state.settings = await post("/api/settings/reset", {});
       applyTheme(state.settings.colors);
+      clearTimeout(state.saveTimer);
       state.positions = defaultPositions(state.agents, "algorithm");
-      saveLayout(); renderNodes(); renderEdges(); fit(); schedulePoll();
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(state.positions));
+      renderNodes(); renderEdges(); fit(); schedulePoll();
       closeSettings(); toast("settings reset");
     } catch (err) { toast("reset failed: " + err.message); }
   });
-  $("canvasPreset").addEventListener("change", (e) => {
+  $("canvasPreset").addEventListener("change", async (e) => {
+    clearTimeout(state.saveTimer);
     state.positions = defaultPositions(state.agents, e.target.value);
-    renderNodes(); renderEdges(); fit(); saveLayout();
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(state.positions));
+    renderNodes(); renderEdges(); fit();
+    try {
+      state.settings = await post("/api/settings", { canvas: { positions: {}, preset: e.target.value } });
+    } catch (err) { toast(err.message); }
   });
   $("savePositions").addEventListener("click", async () => {
     try {
@@ -633,7 +659,9 @@
   $("clearPositions").addEventListener("click", async () => {
     try {
       state.settings = await post("/api/settings", { canvas: { positions: {}, preset: "algorithm" } });
+      clearTimeout(state.saveTimer);
       state.positions = defaultPositions(state.agents, "algorithm");
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(state.positions));
       renderNodes(); renderEdges(); fit();
       toast("saved positions cleared");
     } catch (err) { toast(err.message); }
@@ -657,6 +685,7 @@
 
   // -- node right-click menu -------------------------------------------------
   stage.addEventListener("contextmenu", (e) => {
+    e.preventDefault();  // suppress the native menu everywhere on the canvas
     const el = e.target.closest(".node");
     if (!el) { $("contextMenu").hidden = true; return; }
     e.preventDefault();
