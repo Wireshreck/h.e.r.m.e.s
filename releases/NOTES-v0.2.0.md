@@ -24,6 +24,7 @@ Run **`HERMES-Fleet-Setup.exe`** from v0.1.0 (or the PowerShell installer there)
 - ASCII glyph background, pan/zoom/drag, FIT/RESET, persistent layout, inspector.
 - Left-edge history drawer (Alt+H) and right-edge live comms drawer (Alt+C), backed by comms.db.
 - Statuses derived from real kanban/comms data; no fake activity.
+- Settings (gear button / Alt+S): colour themes, saved default node layouts, refresh/timing controls, and per-bot model switching. Right-click any node for its model dropdown and actions.
 
 ## Assets
 
